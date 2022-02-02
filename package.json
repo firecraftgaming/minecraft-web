@@ -7,10 +7,8 @@
   "license": "MIT",
   "scripts": {
     "start": "node index.js",
-    "build": "npm build:prod",
+    "build": "webpack",
     "watch": "webpack --watch",
-    "build:prod": "webpack --config webpack.prod.js",
-    "build:dev": "webpack --config webpack.dev.js",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
