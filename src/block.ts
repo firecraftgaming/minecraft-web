@@ -9,9 +9,9 @@ function fromAxis(x: number, y: number, z: number, r: number) {
   return q;
 }
 
-function offset(v: THREE.Vector3, x: number, y: number, z: number) {
+function offset(v: THREE.Vector3, v2: THREE.Vector3, x: number, y: number, z: number) {
   const offset_vector = new THREE.Vector3(x, y, z).multiplyScalar(1 / 2);
-  return v.clone().add(offset_vector);
+  return v.clone().add(offset_vector).add(v2.clone().multiplyScalar(16));
 }
 
 const axis = {
@@ -38,14 +38,16 @@ export interface BlockFace {
   back:  [Quaternion, Vector3],
 }
 
+export type BlockData = null | Material;
+
 export class Block {
-  public material: Material;
+  public data: BlockData;
 
   public position: THREE.Vector3;
   public chunk: THREE.Vector3;
 
-  constructor(type: Material, pos: THREE.Vector3, chunk: THREE.Vector3) {
-    this.material = type;
+  constructor(data: BlockData, pos: THREE.Vector3, chunk: THREE.Vector3) {
+    this.data = data;
 
     this.position = pos;
     this.chunk = chunk;
@@ -53,27 +55,18 @@ export class Block {
 
   get Face(): BlockFace {
     return {
-      up:    [axis.up,    offset(this.position, 0,  1,  0)],
-      down:  [axis.down,  offset(this.position, 0, -1,  0)],
+      up:    [axis.up,    offset(this.position, this.chunk, 0,  1,  0)],
+      down:  [axis.down,  offset(this.position, this.chunk, 0, -1,  0)],
 
-      right: [axis.right, offset(this.position, 1,  0,  0)],
-      left:  [axis.left,  offset(this.position, -1,  0,  0)],
+      right: [axis.right, offset(this.position, this.chunk, 1,  0,  0)],
+      left:  [axis.left,  offset(this.position, this.chunk, -1,  0,  0)],
 
-      front: [axis.front, offset(this.position, 0,  0,  1)],
-      back:  [axis.back,  offset(this.position, 0,  0, -1)],
+      front: [axis.front, offset(this.position, this.chunk, 0,  0,  1)],
+      back:  [axis.back,  offset(this.position, this.chunk, 0,  0, -1)],
     };
   }
 
   static getSide(material, url): string {
-    let path = ['texturepacks', Package, material.type.toLowerCase(), url + '.png'].join('/');
-    return path;
-
-    // if (!cache.has(path)) {
-    //   const texture = new THREE.TextureLoader().load(path);
-    //   texture.magFilter = THREE.NearestFilter;
-    //
-    //   cache.set(path, texture);
-    // }
-    // return cache.get(path);
+    return ['texturepacks', Package, material.type.toLowerCase(), url + '.png'].join('/');
   }
 }

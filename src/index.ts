@@ -37,7 +37,8 @@ window.onresize = () => {
 const PI = Math.PI;
 const half_PI = PI / 2;
 
-let cache = new Map<string, THREE.Texture>();
+let cache = new Map<string, THREE.MeshBasicMaterial>();
+const geometry = new THREE.PlaneGeometry(1, 1);
 
 const worker = new Worker('/worker.js');
 worker.onmessage = (e) => {
@@ -48,12 +49,11 @@ worker.onmessage = (e) => {
       const texture = new THREE.TextureLoader().load(path);
       texture.magFilter = THREE.NearestFilter;
 
-      cache.set(path, texture);
+      const material = new THREE.MeshBasicMaterial( { map: texture, side: THREE.DoubleSide } );
+      cache.set(path, material);
     }
 
-    const geometry = new THREE.PlaneGeometry(1, 1);
-    const material = new THREE.MeshBasicMaterial( { map: cache.get(path), side: THREE.DoubleSide } );
-
+    const material = cache.get(path);
     const mesh = new THREE.Mesh( geometry, material );
     mesh.position.copy(v[0][1]);
     mesh.rotation.setFromQuaternion(v[0][0]);
@@ -77,14 +77,10 @@ function animate() {
   camera.position.x += velocity.z * -Math.sin(camera.rotation.y);
   camera.position.z += velocity.z * -Math.cos(camera.rotation.y);
 
-  const chunk_x = Math.floor(camera.position.x / 16);
-  const chunk_z = Math.floor(camera.position.z / 16);
-
   worker.postMessage({
-    type: 'create',
+    type: 'update',
     data: {
-      x: chunk_x,
-      z: chunk_z,
+      pos: camera.position,
     }
   });
 
