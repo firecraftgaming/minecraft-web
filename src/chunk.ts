@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {Object3D, Texture, Vector3} from "three";
 import {Block, BlockData, BlockFace} from "./block";
 import {Minecraft} from "./minecraft";
+import SimplexNoise from 'simplex-noise';
 
 export const scene = new THREE.Scene();
 
@@ -34,7 +35,8 @@ const face_type = {
   back:  'side',
 };
 
-export function isTransparent(block: Block) {
+export function isTransparent(block: Block | null): boolean {
+  if (!block) return true;
   if (!block.data) return true;
   if (block.data === Material.AIR) return true;
 
@@ -64,12 +66,19 @@ export class Chunk {
     return this.getBlockLocal(local_position);
   }
 
-  getBlockLocal(pos: Vector3): Block {
-    if (pos.x < 0 || pos.x > 15) return;
-    if (pos.y < 0 || pos.y > 15) return;
-    if (pos.z < 0 || pos.z > 15) return;
+  getIndexLocal(pos: Vector3): number {
+    if (pos.x < 0 || pos.x > 15) return -1;
+    if (pos.y < 0 || pos.y > 15) return -1;
+    if (pos.z < 0 || pos.z > 15) return -1;
 
     const index = pos.x * 1 + pos.y * 16 + pos.z * 256;
+    return index;
+  }
+
+  getBlockLocal(pos: Vector3): Block {
+    const index = this.getIndexLocal(pos);
+    if (index < 0) return;
+
     const block = this.blocks[index];
 
     // const data = this.block_data[block];
@@ -79,24 +88,18 @@ export class Chunk {
 
   checkFace(block: Block, x: number, y: number, z: number, type: string): [BlockFace[keyof BlockFace], string] {
     const offset = new THREE.Vector3(x, y, z);
-    const pos = block.position.clone().add(offset).add(this.position.clone().multiplyScalar(16));
+    const pos = block.position.clone().add(offset);
 
-    const b = Minecraft.getBlock(pos, false);
+    const b = this.getBlockLocal(pos);
     if (!isTransparent(b)) return;
 
     const side = Block.getSide(block.data, face_type[type]);
     return [block.Face[type], side];
   }
 
-  static send_update() {
-    const all_faces = Chunk.chunks.reduce((acc, chunk) => {
-      return acc.concat(chunk.faces);
-    }, []);
-    postMessage(all_faces);
-  }
-
   update() {
     this.faces = [];
+    const active_blocks = [];
     
     for (let x = 0; x < 16; x++) {
       for (let y = 0; y < 16; y++) {
@@ -115,26 +118,31 @@ export class Chunk {
             this.checkFace(block,  0,  0,  1, 'front'),
           ].filter(v => !!v);
 
+          if (f.length) active_blocks.push(block.position);
           this.faces = this.faces.concat(f);
         }
       }
     }
 
-    Chunk.send_update();
+    postMessage({
+      position: this.position,
+      faces: this.faces,
+
+      blocks: active_blocks,
+    });
   }
 
   setBlockAt(pos: Vector3, data: BlockData, update=true) {
     const local_position = pos.clone().sub(this.position.clone().multiplyScalar(16));
-    if (local_position.x < 0 || local_position.x > 15) return;
-    if (local_position.y < 0 || local_position.y > 15) return;
-    if (local_position.z < 0 || local_position.z > 15) return;
+    this.setBlockLocal(local_position, data, update);
+  }
 
-    const index = local_position.x * 1 + local_position.y * 16 + local_position.z * 256;
+  setBlockLocal(pos: Vector3, data: BlockData, update=true) {
+    const index = this.getIndexLocal(pos);
+    if (index < 0) return;
 
     // this.block_data[this.index] = data;
     this.blocks[index] = data?.index ?? 0;
-
-    this.index++;
     if (update) this.update();
   }
 
@@ -146,6 +154,21 @@ export class Chunk {
       for (let y = min.y; y <= max.y; y++) {
         for (let z = min.z; z <= max.z; z++) {
           this.setBlockAt(new THREE.Vector3(x, y, z), material, false);
+        }
+      }
+    }
+
+    if (update) this.update();
+  }
+
+  fillLocal(v1, v2, material, update=true) {
+    const min = v1.clone().min(v2);
+    const max = v1.clone().max(v2);
+
+    for (let x = min.x; x <= max.x; x++) {
+      for (let y = min.y; y <= max.y; y++) {
+        for (let z = min.z; z <= max.z; z++) {
+          this.setBlockLocal(new THREE.Vector3(x, y, z), material, false);
         }
       }
     }
@@ -170,12 +193,18 @@ abstract class ChunkGenerator {
 }
 
 class ClassicGenerator extends ChunkGenerator {
+  private static simplex = new SimplexNoise();
   public generate(chunk: Chunk) {
-    const x = chunk.position.x * 16;
-    const z = chunk.position.z * 16;
+    const chunk_pos = chunk.position.clone().multiplyScalar(16);
 
-    chunk.fill(new THREE.Vector3(x,  0, z), new THREE.Vector3(x + 15,  9, z + 15),  Material.DIRT, false);
-    chunk.fill(new THREE.Vector3(x, 10, z), new THREE.Vector3(x + 15, 10, z + 15), Material.GRASS, false);
+    for (let x = 0; x < 16; x++) {
+      for (let z = 0; z < 16; z++) {
+        const y = Math.round(ClassicGenerator.simplex.noise2D((x + chunk_pos.x) / 30, (z + chunk_pos.z) / 30) * 6 + 8);
+
+        chunk.setBlockLocal(new THREE.Vector3(x, y, z), Material.GRASS, false);
+        chunk.fillLocal(new THREE.Vector3(x,  0, z), new THREE.Vector3(x,  y - 1, z),  Material.DIRT, false);
+      }
+    }
   }
 }
 Chunk.generator = new ClassicGenerator();

@@ -10,7 +10,7 @@ onmessage = function (e) {
         const chunk_x = Math.floor(position.x / 16);
         const chunk_z = Math.floor(position.z / 16);
 
-        const d = 2;
+        const d = 4;
         for (let x = -d; x <= d; x++) {
             for (let z = -d; z <= d; z++) {
                 this.setTimeout(() => {
